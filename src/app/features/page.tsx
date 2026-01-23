@@ -1,8 +1,8 @@
-import { Header } from "@/components/header"
-import { Footer } from "@/components/footer"
-import { ThemeProvider } from "@/components/theme-provider"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
+import { Header } from "../../components/header"
+import { Footer } from "../../components/footer"
+import { ThemeProvider } from "../../components/theme-provider"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card"
+import { Badge } from "../../components/ui/badge"
 import { Shield, Smartphone, Download, Copy, Zap, Globe, Lock, Users } from "lucide-react"
 
 export default function FeaturesPage() {

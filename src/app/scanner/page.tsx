@@ -1,15 +1,15 @@
 "use client"
 
 import { useState, useRef, useEffect } from "react"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { useToast } from "@/hooks/use-toast"
-import { Toaster } from "@/components/ui/toaster"
-import { ThemeProvider } from "@/components/theme-provider"
+import { Button } from "../../components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card"
+import { Badge } from "../../components/ui/badge"
+import { useToast } from "../../hooks/use-toast"
+import { Toaster } from "../../components/ui/toaster"
+import { ThemeProvider } from "../../components/theme-provider"
 import { Wifi, Camera, Copy, AlertCircle } from "lucide-react"
-import { Header } from "@/components/header"
-import { Footer } from "@/components/footer"
+import { Header } from "../../components/header"
+import { Footer } from "../../components/footer"
 
 interface WifiDetails {
   ssid?: string

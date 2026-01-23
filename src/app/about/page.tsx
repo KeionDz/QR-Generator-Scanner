@@ -1,8 +1,8 @@
-import { Header } from "@/components/header"
-import { Footer } from "@/components/footer"
-import { ThemeProvider } from "@/components/theme-provider"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
+import { Header } from "../../components/header"
+import { Footer } from "../../components/footer"
+import { ThemeProvider } from "../../components/theme-provider"
+import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card"
+import { Badge } from "../../components/ui/badge"
 import { Wifi, Shield, Heart, Code, Users, Lightbulb } from "lucide-react"
 
 export default function AboutPage() {
