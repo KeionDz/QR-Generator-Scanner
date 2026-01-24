@@ -390,7 +390,7 @@ export default function QRScanner() {
                               <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() => copyToClipboard(scannedData.ssid || "")}
+                                onClick={() => copyToClipboard(scannedData.ssid || "", toast)}
                               >
                                 <Copy className="h-4 w-4" />
                               </Button>
@@ -411,7 +411,7 @@ export default function QRScanner() {
                               <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() => copyToClipboard(scannedData.password || "")}
+                                onClick={() => copyToClipboard(scannedData.password || "", toast)}
                               >
                                 <Copy className="h-4 w-4" />
                               </Button>
@@ -455,7 +455,7 @@ export default function QRScanner() {
                               <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() => copyToClipboard(scannedData.product || "")}
+                                onClick={() => copyToClipboard(scannedData.product || "", toast)}
                               >
                                 <Copy className="h-4 w-4" />
                               </Button>
@@ -476,7 +476,7 @@ export default function QRScanner() {
                               <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() => copyToClipboard(scannedData.gtin || "")}
+                                onClick={() => copyToClipboard(scannedData.gtin || "", toast)}
                               >
                                 <Copy className="h-4 w-4" />
                               </Button>
@@ -498,7 +498,7 @@ export default function QRScanner() {
                                 <Button
                                   variant="outline"
                                   size="sm"
-                                  onClick={() => copyToClipboard(scannedData.serial || "")}
+                                  onClick={() => copyToClipboard(scannedData.serial || "", toast)}
                                 >
                                   <Copy className="h-4 w-4" />
                                 </Button>
@@ -519,7 +519,7 @@ export default function QRScanner() {
                                 <Button
                                   variant="outline"
                                   size="sm"
-                                  onClick={() => copyToClipboard(scannedData.batch || "")}
+                                  onClick={() => copyToClipboard(scannedData.batch || "", toast)}
                                 >
                                   <Copy className="h-4 w-4" />
                                 </Button>
@@ -569,7 +569,7 @@ export default function QRScanner() {
                       </div>
                     )}
 
-                    <Button onClick={resetScanner} variant="outline" className="w-full bg-transparent">
+                    <Button onClick={() => resetScanner(setScannedData, setError)} variant="outline" className="w-full bg-transparent">
                       Scan Another QR Code
                     </Button>
                   </div>
