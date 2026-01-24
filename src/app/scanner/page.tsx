@@ -1,5 +1,9 @@
 "use client"
 
+import { Input } from "../../components/ui/input"
+
+import { Label } from "../../components/ui/label"
+
 import { useState, useRef, useEffect } from "react"
 import { Button } from "../../components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card"
@@ -7,7 +11,7 @@ import { Badge } from "../../components/ui/badge"
 import { useToast } from "../../hooks/use-toast"
 import { Toaster } from "../../components/ui/toaster"
 import { ThemeProvider } from "../../components/theme-provider"
-import { Wifi, Camera, Copy, AlertCircle } from "lucide-react"
+import { Wifi, Camera, Copy, AlertCircle, Wifi as Wifi2 } from "lucide-react"
 import { Header } from "../../components/header"
 import { Footer } from "../../components/footer"
 
@@ -18,12 +22,16 @@ interface WifiDetails {
   hidden?: string
 }
 
+type ScannerMode = "device" | "network"
+
 export default function QRScanner() {
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [isScanning, setIsScanning] = useState(false)
   const [scannedData, setScannedData] = useState<WifiDetails | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [scannerMode, setScannerMode] = useState<ScannerMode>("device")
+  const [networkCameraUrl, setNetworkCameraUrl] = useState("")
   const { toast } = useToast()
 
   useEffect(() => {
@@ -150,6 +158,29 @@ export default function QRScanner() {
     setError(null)
   }
 
+  const handleNetworkCameraConnect = async () => {
+    if (!networkCameraUrl.trim()) {
+      setError("Please enter a network camera URL")
+      return
+    }
+
+    try {
+      setError(null)
+      // In a real implementation, this would connect to the network camera stream
+      toast({
+        title: "Network Camera Mode",
+        description: "Enter the RTSP or HTTP stream URL from your network camera. (This is a placeholder for demonstration)",
+      })
+    } catch (err) {
+      setError("Could not connect to network camera")
+      toast({
+        title: "Connection Error",
+        description: "Unable to connect to network camera. Please check the URL.",
+        variant: "destructive",
+      })
+    }
+  }
+
   return (
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
       <div className="min-h-screen bg-background flex flex-col">
@@ -181,10 +212,64 @@ export default function QRScanner() {
                         <p className="text-sm text-destructive">{error}</p>
                       </div>
                     )}
-                    <Button onClick={() => setIsScanning(true)} size="lg" className="w-full">
-                      <Camera className="h-4 w-4 mr-2" />
-                      Start Scanning
-                    </Button>
+
+                    {/* Mode Selection */}
+                    <div className="flex gap-2 border-b pb-4">
+                      <button
+                        onClick={() => setScannerMode("device")}
+                        className={`px-4 py-2 font-medium border-b-2 transition-colors ${
+                          scannerMode === "device"
+                            ? "border-primary text-primary"
+                            : "border-transparent text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <Camera className="h-4 w-4" />
+                          Device Camera
+                        </div>
+                      </button>
+                      <button
+                        onClick={() => setScannerMode("network")}
+                        className={`px-4 py-2 font-medium border-b-2 transition-colors ${
+                          scannerMode === "network"
+                            ? "border-primary text-primary"
+                            : "border-transparent text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <Wifi2 className="h-4 w-4" />
+                          Network Camera
+                        </div>
+                      </button>
+                    </div>
+
+                    {scannerMode === "device" && (
+                      <Button onClick={() => setIsScanning(true)} size="lg" className="w-full">
+                        <Camera className="h-4 w-4 mr-2" />
+                        Start Scanning
+                      </Button>
+                    )}
+
+                    {scannerMode === "network" && (
+                      <div className="space-y-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="camera-url">Network Camera Stream URL</Label>
+                          <Input
+                            id="camera-url"
+                            placeholder="e.g., rtsp://192.168.1.100:554/stream or http://..."
+                            value={networkCameraUrl}
+                            onChange={(e) => setNetworkCameraUrl(e.target.value)}
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            Supported formats: RTSP, HTTP, or HLS stream URLs
+                          </p>
+                        </div>
+                        <Button onClick={handleNetworkCameraConnect} size="lg" className="w-full">
+                          <Wifi2 className="h-4 w-4 mr-2" />
+                          Connect Network Camera
+                        </Button>
+                      </div>
+                    )}
                   </>
                 )}
 
