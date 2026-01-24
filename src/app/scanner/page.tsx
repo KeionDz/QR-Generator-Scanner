@@ -144,6 +144,23 @@ export default function QRScanner() {
   const { toast } = useToast()
   const [urlError, setUrlError] = useState<string | null>(null)
 
+  const stopCamera = () => {
+    if (deviceVideoRef.current && deviceVideoRef.current.srcObject) {
+      const tracks = (deviceVideoRef.current.srcObject as MediaStream).getTracks()
+      tracks.forEach((track) => track.stop())
+      deviceVideoRef.current.srcObject = null
+    }
+  }
+
+  const resetScanner = () => {
+    stopCamera()
+    setIsScanning(false)
+    setScannedData(null)
+    setQRType("unknown")
+    setIsNetworkCameraConnected(false)
+    setCameraPreviewUrl("")
+  }
+
   const connectNetworkCamera = async () => {
     const url = networkCameraUrl.trim()
     if (!url) {
@@ -184,10 +201,7 @@ export default function QRScanner() {
     startCamera()
 
     return () => {
-      if (deviceVideoRef.current && deviceVideoRef.current.srcObject) {
-        const tracks = (deviceVideoRef.current.srcObject as MediaStream).getTracks()
-        tracks.forEach((track) => track.stop())
-      }
+      stopCamera()
     }
   }, [isScanning, scannerMode, toast])
 
@@ -220,27 +234,25 @@ export default function QRScanner() {
           if (code) {
             const qrText = code.data?.trim() || ""
 
-            // ❌ IF NO DATA -> REFRESH PAGE
             if (!qrText) {
               toast({
                 title: "Invalid QR Code",
                 description: "QR scanned but contains no data.",
                 variant: "destructive",
               })
-              window.location.reload()
+              resetScanner()
               return
             }
 
             const parsedData = parseQRCode(qrText)
 
-            // ❌ IF PARSED DATA IS EMPTY -> REFRESH PAGE
             if (!isValidScannedData(parsedData.type, parsedData.data)) {
               toast({
                 title: "Invalid QR Code",
                 description: "QR scanned but no valid data found.",
                 variant: "destructive",
               })
-              window.location.reload()
+              resetScanner()
               return
             }
 
@@ -248,10 +260,7 @@ export default function QRScanner() {
             setQRType(parsedData.type)
             setIsScanning(false)
 
-            if (scannerMode === "device" && deviceVideoRef.current?.srcObject) {
-              const tracks = (deviceVideoRef.current.srcObject as MediaStream).getTracks()
-              tracks.forEach((track) => track.stop())
-            }
+            if (scannerMode === "device") stopCamera()
 
             toast({
               title: `${parsedData.type === "wifi" ? "Wi-Fi" : parsedData.type === "product" ? "Product" : "QR Code"} QR Code Scanned`,
@@ -301,10 +310,6 @@ export default function QRScanner() {
       if (video) video.src = ""
     }
   }, [isNetworkCameraConnected, scannerMode, cameraPreviewUrl, networkCameraUrl])
-
-  const resetScanner = () => {
-    window.location.reload() // ✅ REFRESH PAGE
-  }
 
   return (
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
