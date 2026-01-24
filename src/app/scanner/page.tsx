@@ -14,8 +14,6 @@ import { Header } from "../../components/header"
 import { Footer } from "../../components/footer"
 import Hls from "hls.js"
 
-const DEFAULT_STREAM_URL = "http://localhost:4000/cam1/index.m3u8"
-
 interface WifiDetails {
   ssid?: string
   password?: string
@@ -98,11 +96,6 @@ const copyToClipboard = async (text: string, toast: any) => {
   }
 }
 
-const resetScanner = (setScannedData: any, setError: any) => {
-  setScannedData(null)
-  setError(null)
-}
-
 const isUrl = (text: string) => {
   try {
     new URL(text)
@@ -135,18 +128,18 @@ export default function QRScanner() {
   const { toast } = useToast()
   const [urlError, setUrlError] = useState<string | null>(null)
 
- const connectNetworkCamera = async () => {
-  const url = networkCameraUrl.trim()
-  if (!url) {
-    setUrlError("Stream URL is required")
-    return
-  }
+  const connectNetworkCamera = async () => {
+    const url = networkCameraUrl.trim()
+    if (!url) {
+      setUrlError("Stream URL is required")
+      return
+    }
 
-  setUrlError(null)
-  setCameraPreviewUrl(url)
-  setIsNetworkCameraConnected(true)
-  setIsScanning(true)
-}
+    setUrlError(null)
+    setCameraPreviewUrl(url)
+    setIsNetworkCameraConnected(true)
+    setIsScanning(true)
+  }
 
   // Device camera stream
   useEffect(() => {
@@ -268,6 +261,10 @@ export default function QRScanner() {
     }
   }, [isNetworkCameraConnected, scannerMode, cameraPreviewUrl, networkCameraUrl])
 
+  const resetScanner = () => {
+    window.location.reload() // ✅ REFRESH PAGE
+  }
+
   return (
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
       <div className="min-h-screen bg-background flex flex-col">
@@ -337,20 +334,20 @@ export default function QRScanner() {
                       <div className="space-y-4">
                         <Label htmlFor="camera-url">Network Camera Stream URL</Label>
                         <Input
-  id="camera-url"
-  placeholder="e.g., http:/ip/index.m3u8"
-  value={networkCameraUrl}
-  onChange={(e) => {
-    setNetworkCameraUrl(e.target.value)
-    setUrlError(null)
-  }}
-/>
+                          id="camera-url"
+                          placeholder="e.g., http:/ip/index.m3u8"
+                          value={networkCameraUrl}
+                          onChange={(e) => {
+                            setNetworkCameraUrl(e.target.value)
+                            setUrlError(null)
+                          }}
+                        />
 
-{urlError && (
-  <p className="text-sm text-destructive mt-1">
-    {urlError}
-  </p>
-)}
+                        {urlError && (
+                          <p className="text-sm text-destructive mt-1">
+                            {urlError}
+                          </p>
+                        )}
 
                         <Button
                           onClick={connectNetworkCamera}
@@ -390,8 +387,9 @@ export default function QRScanner() {
                           className="w-full h-80 object-cover"
                         />
                         <div className="absolute inset-0 border-2 border-primary rounded-lg pointer-events-none">
-                          <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-32 h-32 border-2 border-primary rounded-lg opacity-50" />
-                        </div>
+{/* Bigger scan box */}
+<div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-56 h-56 border-2 border-primary rounded-lg opacity-50" />
+</div>
                       </div>
                     )}
 
@@ -440,7 +438,6 @@ export default function QRScanner() {
                     {scannedData &&
                       "ssid" in scannedData &&
                       scannedData.ssid &&
-                      scannedData.ssid !== DEFAULT_STREAM_URL &&
                       isUrl(scannedData.ssid) && (
                         <div className="space-y-2">
                           <div className="flex items-center gap-2">
@@ -611,7 +608,11 @@ export default function QRScanner() {
                       </div>
                     )}
 
-                    <Button onClick={() => resetScanner(setScannedData, setError)} variant="outline" className="w-full bg-transparent">
+                    <Button
+                      onClick={resetScanner}
+                      variant="outline"
+                      className="w-full bg-transparent"
+                    >
                       Scan Another QR Code
                     </Button>
                   </div>
