@@ -9,9 +9,12 @@ import { Badge } from "../../components/ui/badge"
 import { useToast } from "../../hooks/use-toast"
 import { Toaster } from "../../components/ui/toaster"
 import { ThemeProvider } from "../../components/theme-provider"
-import { Wifi, Camera, Copy, AlertCircle, Wifi as Wifi2 } from "lucide-react"
+import { Wifi, Camera, Copy, AlertCircle, Wifi as Wifi2, Play, X, Link2 } from "lucide-react"
 import { Header } from "../../components/header"
 import { Footer } from "../../components/footer"
+import Hls from "hls.js"
+
+const DEFAULT_STREAM_URL = "http://localhost:4000/cam1/index.m3u8"
 
 interface WifiDetails {
   ssid?: string
@@ -36,8 +39,6 @@ type QRType = "wifi" | "product" | "unknown"
 
 const parseWifiString = (qrData: string): WifiDetails => {
   const details: WifiDetails = {}
-
-  // Parse WIFI QR code format: WIFI:T:WPA;S:networkname;P:password;H:hidden;;
   const ssidMatch = qrData.match(/S:([^;]+)/)
   const passwordMatch = qrData.match(/P:([^;]+)/)
   const securityMatch = qrData.match(/T:([^;]+)/)
@@ -54,7 +55,6 @@ const parseWifiString = (qrData: string): WifiDetails => {
 const parseProductString = (qrData: string): ProductDetails => {
   const details: ProductDetails = { type: "product" }
 
-  // Parse query parameters from URL
   try {
     const url = new URL(qrData)
     details.gtin = url.searchParams.get("gtin") || undefined
@@ -64,7 +64,6 @@ const parseProductString = (qrData: string): ProductDetails => {
     details.expiry = url.searchParams.get("expiry") || undefined
     details.info = url.searchParams.get("info") || undefined
   } catch {
-    // If not a valid URL, try parsing as raw query string
     const gtinMatch = qrData.match(/[?&]?gtin=([^&]+)/)
     const productMatch = qrData.match(/[?&]?product=([^&]+)/)
     const serialMatch = qrData.match(/[?&]?serial=([^&]+)/)
@@ -104,70 +103,62 @@ const resetScanner = (setScannedData: any, setError: any) => {
   setError(null)
 }
 
-const handleNetworkCameraConnect = async (networkCameraUrl: string, setError: any, toast: any) => {
-  if (!networkCameraUrl.trim()) {
-    setError("Please enter a network camera URL")
-    return
-  }
-
+const isUrl = (text: string) => {
   try {
-    setError(null)
-    // In a real implementation, this would connect to the network camera stream
-    toast({
-      title: "Network Camera Mode",
-      description: "Enter the RTSP or HTTP stream URL from your network camera. (This is a placeholder for demonstration)",
-    })
-  } catch (err) {
-    setError("Could not connect to network camera")
-    toast({
-      title: "Connection Error",
-      description: "Unable to connect to network camera. Please check the URL.",
-      variant: "destructive",
-    })
+    new URL(text)
+    return true
+  } catch {
+    return false
   }
 }
 
+const parseQRCode = (qrData: string): { type: QRType; data: ScannedData } => {
+  if (qrData.startsWith("WIFI:")) return { type: "wifi", data: parseWifiString(qrData) }
+  if (qrData.includes("?gtin=") || qrData.includes("?product=")) return { type: "product", data: parseProductString(qrData) }
+  if (qrData.includes("batch=") || qrData.includes("serial=") || qrData.includes("expiry=")) return { type: "product", data: parseProductString(qrData) }
+  return { type: "unknown", data: { ssid: qrData } as WifiDetails }
+}
+
 export default function QRScanner() {
-  const videoRef = useRef<HTMLVideoElement>(null)
+  const deviceVideoRef = useRef<HTMLVideoElement>(null)
+  const networkVideoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
+
   const [isScanning, setIsScanning] = useState(false)
   const [scannedData, setScannedData] = useState<ScannedData>(null)
   const [qrType, setQRType] = useState<QRType>("unknown")
   const [error, setError] = useState<string | null>(null)
   const [scannerMode, setScannerMode] = useState<ScannerMode>("device")
   const [networkCameraUrl, setNetworkCameraUrl] = useState("")
+  const [isNetworkCameraConnected, setIsNetworkCameraConnected] = useState(false)
+  const [cameraPreviewUrl, setCameraPreviewUrl] = useState("")
   const { toast } = useToast()
+  const [urlError, setUrlError] = useState<string | null>(null)
 
-  const parseQRCode = (qrData: string): { type: QRType; data: ScannedData } => {
-    // Check if it's a WiFi QR code
-    if (qrData.startsWith("WIFI:")) {
-      return { type: "wifi", data: parseWifiString(qrData) }
-    }
-
-    // Check if it's a Product QR code (GS1 Digital Link format)
-    if (qrData.includes("?gtin=") || qrData.includes("?product=")) {
-      return { type: "product", data: parseProductString(qrData) }
-    }
-
-    // Check if it might be a Product QR code with batch or serial
-    if (qrData.includes("batch=") || qrData.includes("serial=") || qrData.includes("expiry=")) {
-      return { type: "product", data: parseProductString(qrData) }
-    }
-
-    // Unknown format
-    return { type: "unknown", data: { ssid: qrData } as WifiDetails }
+ const connectNetworkCamera = async () => {
+  const url = networkCameraUrl.trim()
+  if (!url) {
+    setUrlError("Stream URL is required")
+    return
   }
 
+  setUrlError(null)
+  setCameraPreviewUrl(url)
+  setIsNetworkCameraConnected(true)
+  setIsScanning(true)
+}
+
+  // Device camera stream
   useEffect(() => {
-    if (!isScanning) return
+    if (!isScanning || scannerMode !== "device") return
 
     const startCamera = async () => {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: "environment" },
         })
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream
+        if (deviceVideoRef.current) {
+          deviceVideoRef.current.srcObject = stream
         }
         setError(null)
       } catch (err) {
@@ -184,19 +175,26 @@ export default function QRScanner() {
     startCamera()
 
     return () => {
-      if (videoRef.current && videoRef.current.srcObject) {
-        const tracks = (videoRef.current.srcObject as MediaStream).getTracks()
+      if (deviceVideoRef.current && deviceVideoRef.current.srcObject) {
+        const tracks = (deviceVideoRef.current.srcObject as MediaStream).getTracks()
         tracks.forEach((track) => track.stop())
       }
     }
-  }, [isScanning, toast])
+  }, [isScanning, scannerMode, toast])
 
+  // QR scanning
   useEffect(() => {
-    if (!isScanning || !videoRef.current || !canvasRef.current) return
+    if (!isScanning) return
+    if (!canvasRef.current) return
+
+    const video = scannerMode === "device"
+      ? deviceVideoRef.current
+      : networkVideoRef.current
+
+    if (!video) return
 
     const canvas = canvasRef.current
     const ctx = canvas.getContext("2d")
-    const video = videoRef.current
     let animationId: number
 
     const scan = async () => {
@@ -206,33 +204,28 @@ export default function QRScanner() {
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
 
         try {
-          // Dynamically import jsQR
           const jsQR = (await import("jsqr")).default
-
           const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
           const code = jsQR(imageData.data, imageData.width, imageData.height)
 
           if (code) {
-            const data = code.data
-            const parsedData = parseQRCode(data)
+            const parsedData = parseQRCode(code.data)
             setScannedData(parsedData.data)
             setQRType(parsedData.type)
             setIsScanning(false)
 
-            // Stop camera
-            if (videoRef.current && videoRef.current.srcObject) {
-              const tracks = (videoRef.current.srcObject as MediaStream).getTracks()
+            if (scannerMode === "device" && deviceVideoRef.current?.srcObject) {
+              const tracks = (deviceVideoRef.current.srcObject as MediaStream).getTracks()
               tracks.forEach((track) => track.stop())
             }
 
-            const typeLabel = parsedData.type === "wifi" ? "Wi-Fi" : parsedData.type === "product" ? "Product" : "QR Code"
             toast({
-              title: `${typeLabel} QR Code Scanned`,
-              description: `${typeLabel} information extracted successfully`,
+              title: `${parsedData.type === "wifi" ? "Wi-Fi" : parsedData.type === "product" ? "Product" : "QR Code"} QR Code Scanned`,
+              description: `Information extracted successfully`,
             })
           }
-        } catch (err) {
-          console.log("[v0] Scanning in progress...")
+        } catch {
+          // ignore errors
         }
       }
 
@@ -241,10 +234,39 @@ export default function QRScanner() {
 
     animationId = requestAnimationFrame(scan)
 
-    return () => {
-      cancelAnimationFrame(animationId)
+    return () => cancelAnimationFrame(animationId)
+  }, [isScanning, scannerMode, toast])
+
+  // Network camera HLS stream
+  useEffect(() => {
+    if (!isNetworkCameraConnected) return
+    if (scannerMode !== "network") return
+
+    const url = cameraPreviewUrl || networkCameraUrl.trim()
+    const video = networkVideoRef.current
+    if (!video) return
+
+    let hls: Hls | null = null
+
+    if (Hls.isSupported()) {
+      hls = new Hls()
+      hls.loadSource(url)
+      hls.attachMedia(video)
+      hls.on(Hls.Events.MANIFEST_PARSED, async () => {
+        video.muted = true
+        await video.play()
+      })
+    } else {
+      video.src = url
+      video.muted = true
+      video.play()
     }
-  }, [isScanning, toast])
+
+    return () => {
+      if (hls) hls.destroy()
+      if (video) video.src = ""
+    }
+  }, [isNetworkCameraConnected, scannerMode, cameraPreviewUrl, networkCameraUrl])
 
   return (
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
@@ -269,6 +291,7 @@ export default function QRScanner() {
                 <CardDescription>Point your camera at a Wi-Fi or Product QR code to extract the information</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
+
                 {!isScanning && !scannedData && (
                   <>
                     {error && (
@@ -293,6 +316,7 @@ export default function QRScanner() {
                           Device Camera
                         </div>
                       </button>
+
                       <button
                         onClick={() => setScannerMode("network")}
                         className={`px-4 py-2 font-medium border-b-2 transition-colors ${
@@ -308,55 +332,90 @@ export default function QRScanner() {
                       </button>
                     </div>
 
+                    {/* NETWORK MODE */}
+                    {scannerMode === "network" && (
+                      <div className="space-y-4">
+                        <Label htmlFor="camera-url">Network Camera Stream URL</Label>
+                        <Input
+  id="camera-url"
+  placeholder="e.g., http:/ip/index.m3u8"
+  value={networkCameraUrl}
+  onChange={(e) => {
+    setNetworkCameraUrl(e.target.value)
+    setUrlError(null)
+  }}
+/>
+
+{urlError && (
+  <p className="text-sm text-destructive mt-1">
+    {urlError}
+  </p>
+)}
+
+                        <Button
+                          onClick={connectNetworkCamera}
+                          size="lg"
+                          className="w-full"
+                        >
+                          <Play className="h-4 w-4 mr-2" />
+                          Connect & Auto Scan
+                        </Button>
+                      </div>
+                    )}
+
+                    {/* DEVICE MODE */}
                     {scannerMode === "device" && (
-                      <Button onClick={() => setIsScanning(true)} size="lg" className="w-full">
+                      <Button
+                        onClick={() => setIsScanning(true)}
+                        size="lg"
+                        className="w-full"
+                      >
                         <Camera className="h-4 w-4 mr-2" />
                         Start Scanning
                       </Button>
                     )}
-
-                    {scannerMode === "network" && (
-                      <div className="space-y-4">
-                        <div className="space-y-2">
-                          <Label htmlFor="camera-url">Network Camera Stream URL</Label>
-                          <Input
-                            id="camera-url"
-                            placeholder="e.g., rtsp://192.168.1.100:554/stream or http://..."
-                            value={networkCameraUrl}
-                            onChange={(e) => setNetworkCameraUrl(e.target.value)}
-                          />
-                          <p className="text-xs text-muted-foreground">
-                            Supported formats: RTSP, HTTP, or HLS stream URLs
-                          </p>
-                        </div>
-                        <Button onClick={() => handleNetworkCameraConnect(networkCameraUrl, setError, toast)} size="lg" className="w-full">
-                          <Wifi2 className="h-4 w-4 mr-2" />
-                          Connect Network Camera
-                        </Button>
-                      </div>
-                    )}
                   </>
                 )}
 
+                {/* SCANNING PREVIEW */}
                 {isScanning && (
-                  <>
-                    <div className="relative w-full bg-muted rounded-lg overflow-hidden">
-                      <video
-                        ref={videoRef}
-                        autoPlay
-                        playsInline
-                        className="w-full h-64 object-cover"
-                      />
-                      <div className="absolute inset-0 border-2 border-primary rounded-lg pointer-events-none">
-                        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-32 h-32 border-2 border-primary rounded-lg opacity-50" />
+                  <div className="space-y-4">
+                    {scannerMode === "network" && (
+                      <div className="relative w-full bg-muted rounded-lg overflow-hidden">
+                        <video
+                          ref={networkVideoRef}
+                          autoPlay
+                          muted
+                          playsInline
+                          className="w-full h-80 object-cover"
+                        />
+                        <div className="absolute inset-0 border-2 border-primary rounded-lg pointer-events-none">
+                          <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-32 h-32 border-2 border-primary rounded-lg opacity-50" />
+                        </div>
                       </div>
-                    </div>
+                    )}
+
+                    {scannerMode === "device" && (
+                      <div className="relative w-full bg-muted rounded-lg overflow-hidden">
+                        <video
+                          ref={deviceVideoRef}
+                          autoPlay
+                          playsInline
+                          className="w-full h-64 object-cover"
+                        />
+                        <div className="absolute inset-0 border-2 border-primary rounded-lg pointer-events-none">
+                          <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-32 h-32 border-2 border-primary rounded-lg opacity-50" />
+                        </div>
+                      </div>
+                    )}
+
                     <canvas ref={canvasRef} className="hidden" />
+
                     <Button
                       onClick={() => {
                         setIsScanning(false)
-                        if (videoRef.current && videoRef.current.srcObject) {
-                          const tracks = (videoRef.current.srcObject as MediaStream).getTracks()
+                        if (scannerMode === "device" && deviceVideoRef.current?.srcObject) {
+                          const tracks = (deviceVideoRef.current.srcObject as MediaStream).getTracks()
                           tracks.forEach((track) => track.stop())
                         }
                       }}
@@ -365,16 +424,41 @@ export default function QRScanner() {
                     >
                       Cancel
                     </Button>
-                  </>
+                  </div>
                 )}
 
+                {/* RESULT */}
                 {scannedData && (
                   <div className="space-y-6">
                     <div className="p-4 bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-900 rounded-lg">
-                      <p className="text-sm font-medium text-green-800 dark:text-green-200">✓ {qrType === "wifi" ? "Wi-Fi" : qrType === "product" ? "Product" : "QR Code"} scanned successfully</p>
+                      <p className="text-sm font-medium text-green-800 dark:text-green-200">
+                        ✓ {qrType === "wifi" ? "Wi-Fi" : qrType === "product" ? "Product" : "QR Code"} scanned successfully
+                      </p>
                     </div>
 
-                    {/* WiFi QR Display */}
+                    {/* URL PREVIEW */}
+                    {scannedData &&
+                      "ssid" in scannedData &&
+                      scannedData.ssid &&
+                      scannedData.ssid !== DEFAULT_STREAM_URL &&
+                      isUrl(scannedData.ssid) && (
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2">
+                            <Link2 className="h-5 w-5" />
+                            <p className="font-medium">Link Preview</p>
+                          </div>
+                          <a
+                            href={scannedData.ssid}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-blue-600 underline"
+                          >
+                            {scannedData.ssid}
+                          </a>
+                        </div>
+                      )}
+
+                    {/* WiFi Display */}
                     {qrType === "wifi" && scannedData && "ssid" in scannedData && (
                       <div className="space-y-4">
                         {scannedData.ssid && (
@@ -387,11 +471,7 @@ export default function QRScanner() {
                                 readOnly
                                 className="flex-1 px-3 py-2 border rounded-md bg-muted font-mono text-sm"
                               />
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => copyToClipboard(scannedData.ssid || "", toast)}
-                              >
+                              <Button variant="outline" size="sm" onClick={() => copyToClipboard(scannedData.ssid || "", toast)}>
                                 <Copy className="h-4 w-4" />
                               </Button>
                             </div>
@@ -408,11 +488,7 @@ export default function QRScanner() {
                                 readOnly
                                 className="flex-1 px-3 py-2 border rounded-md bg-muted font-mono text-sm"
                               />
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => copyToClipboard(scannedData.password || "", toast)}
-                              >
+                              <Button variant="outline" size="sm" onClick={() => copyToClipboard(scannedData.password || "", toast)}>
                                 <Copy className="h-4 w-4" />
                               </Button>
                             </div>
@@ -439,7 +515,7 @@ export default function QRScanner() {
                       </div>
                     )}
 
-                    {/* Product QR Display */}
+                    {/* Product Display */}
                     {qrType === "product" && scannedData && "type" in scannedData && (
                       <div className="space-y-4">
                         {scannedData.product && (
@@ -452,11 +528,7 @@ export default function QRScanner() {
                                 readOnly
                                 className="flex-1 px-3 py-2 border rounded-md bg-muted font-mono text-sm"
                               />
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => copyToClipboard(scannedData.product || "", toast)}
-                              >
+                              <Button variant="outline" size="sm" onClick={() => copyToClipboard(scannedData.product || "", toast)}>
                                 <Copy className="h-4 w-4" />
                               </Button>
                             </div>
@@ -473,11 +545,7 @@ export default function QRScanner() {
                                 readOnly
                                 className="flex-1 px-3 py-2 border rounded-md bg-muted font-mono text-sm"
                               />
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => copyToClipboard(scannedData.gtin || "", toast)}
-                              >
+                              <Button variant="outline" size="sm" onClick={() => copyToClipboard(scannedData.gtin || "", toast)}>
                                 <Copy className="h-4 w-4" />
                               </Button>
                             </div>
@@ -495,11 +563,7 @@ export default function QRScanner() {
                                   readOnly
                                   className="flex-1 px-3 py-2 border rounded-md bg-muted font-mono text-sm text-xs"
                                 />
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => copyToClipboard(scannedData.serial || "", toast)}
-                                >
+                                <Button variant="outline" size="sm" onClick={() => copyToClipboard(scannedData.serial || "", toast)}>
                                   <Copy className="h-4 w-4" />
                                 </Button>
                               </div>
@@ -516,11 +580,7 @@ export default function QRScanner() {
                                   readOnly
                                   className="flex-1 px-3 py-2 border rounded-md bg-muted font-mono text-sm text-xs"
                                 />
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => copyToClipboard(scannedData.batch || "", toast)}
-                                >
+                                <Button variant="outline" size="sm" onClick={() => copyToClipboard(scannedData.batch || "", toast)}>
                                   <Copy className="h-4 w-4" />
                                 </Button>
                               </div>
@@ -548,24 +608,6 @@ export default function QRScanner() {
                             />
                           </div>
                         )}
-                      </div>
-                    )}
-
-                    {/* Unknown Format */}
-                    {qrType === "unknown" && scannedData && "ssid" in scannedData && (
-                      <div className="space-y-4">
-                        <div className="p-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900 rounded-lg">
-                          <p className="text-sm text-amber-800 dark:text-amber-200">Unknown QR code format detected</p>
-                        </div>
-                        <div className="space-y-2">
-                          <label className="text-sm font-medium">Raw QR Data</label>
-                          <textarea
-                            value={scannedData.ssid}
-                            readOnly
-                            className="w-full px-3 py-2 border rounded-md bg-muted font-mono text-sm"
-                            rows={3}
-                          />
-                        </div>
                       </div>
                     )}
 
