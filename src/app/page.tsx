@@ -55,16 +55,14 @@ export default function QRGenerator() {
   const [showPassword, setShowPassword] = useState(false)
   const [wifiErrors, setWifiErrors] = useState<{ ssid?: string; password?: string }>({})
   const [productErrors, setProductErrors] = useState<{ productName?: string; gtin?: string }>({})
+  const [wifiTouched, setWifiTouched] = useState(false)
+  const [productTouched, setProductTouched] = useState(false)
   const qrRef = useRef<SVGSVGElement>(null)
   const { toast } = useToast()
-  const [isFormValid, setIsFormValid] = useState(false);
-
-  const config = wifiConfig; // Assuming config refers to wifiConfig based on context
-  const setConfig = setWifiConfig; // Assuming setConfig refers to setWifiConfig based on context
-  const errors = wifiErrors; // Assuming errors refers to wifiErrors based on context
-  const setErrors = setWifiErrors; // Assuming setErrors refers to setWifiErrors based on context
 
   useEffect(() => {
+    if (!wifiTouched) return
+
     const newWifiErrors: { ssid?: string; password?: string } = {}
 
     if (!wifiConfig.ssid.trim()) {
@@ -76,10 +74,11 @@ export default function QRGenerator() {
     }
 
     setWifiErrors(newWifiErrors)
-    setIsFormValid(Object.keys(newWifiErrors).length === 0);
-  }, [wifiConfig])
+  }, [wifiConfig, wifiTouched])
 
   useEffect(() => {
+    if (!productTouched) return
+
     const newProductErrors: { productName?: string; gtin?: string } = {}
 
     if (!productConfig.productName.trim()) {
@@ -91,7 +90,7 @@ export default function QRGenerator() {
     }
 
     setProductErrors(newProductErrors)
-  }, [productConfig])
+  }, [productConfig, productTouched])
 
   const isWifiFormValid = useMemo(() => {
     if (!wifiConfig.ssid.trim()) return false
@@ -307,7 +306,10 @@ export default function QRGenerator() {
                         id="ssid"
                         placeholder="Enter Wi-Fi network name"
                         value={wifiConfig.ssid}
-                        onChange={(e) => setWifiConfig((prev) => ({ ...prev, ssid: e.target.value }))}
+                        onChange={(e) => {
+                          setWifiTouched(true)
+                          setWifiConfig((prev) => ({ ...prev, ssid: e.target.value }))
+                        }}
                         className={wifiErrors.ssid ? "border-destructive" : ""}
                       />
                       {wifiErrors.ssid && <p className="text-sm text-destructive">{wifiErrors.ssid}</p>}
@@ -345,7 +347,10 @@ export default function QRGenerator() {
                             type={showPassword ? "text" : "password"}
                             placeholder="Enter Wi-Fi password"
                             value={wifiConfig.password}
-                            onChange={(e) => setWifiConfig((prev) => ({ ...prev, password: e.target.value }))}
+                            onChange={(e) => {
+                              setWifiTouched(true)
+                              setWifiConfig((prev) => ({ ...prev, password: e.target.value }))
+                            }}
                             className={wifiErrors.password ? "border-destructive pr-10" : "pr-10"}
                           />
                           <Button
@@ -462,7 +467,10 @@ export default function QRGenerator() {
                         id="product-name"
                         placeholder="Enter product name"
                         value={productConfig.productName}
-                        onChange={(e) => setProductConfig((prev) => ({ ...prev, productName: e.target.value }))}
+                        onChange={(e) => {
+                          setProductTouched(true)
+                          setProductConfig((prev) => ({ ...prev, productName: e.target.value }))
+                        }}
                         className={productErrors.productName ? "border-destructive" : ""}
                       />
                       {productErrors.productName && <p className="text-sm text-destructive">{productErrors.productName}</p>}
@@ -474,7 +482,10 @@ export default function QRGenerator() {
                         id="gtin"
                         placeholder="Enter GTIN (e.g., 5901234123457)"
                         value={productConfig.gtin}
-                        onChange={(e) => setProductConfig((prev) => ({ ...prev, gtin: e.target.value }))}
+                        onChange={(e) => {
+                          setProductTouched(true)
+                          setProductConfig((prev) => ({ ...prev, gtin: e.target.value }))
+                        }}
                         className={productErrors.gtin ? "border-destructive" : ""}
                       />
                       {productErrors.gtin && <p className="text-sm text-destructive">{productErrors.gtin}</p>}

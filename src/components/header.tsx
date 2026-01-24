@@ -27,7 +27,7 @@ export function Header() {
             <div className="p-1.5 bg-primary/10 rounded-lg">
               <Wifi className="h-5 w-5 text-primary" />
             </div>
-            Wi-Fi QR
+            KDMZ QR
           </Link>
 
           {/* Desktop Navigation */}

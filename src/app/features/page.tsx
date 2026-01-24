@@ -3,7 +3,7 @@ import { Footer } from "../../components/footer"
 import { ThemeProvider } from "../../components/theme-provider"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card"
 import { Badge } from "../../components/ui/badge"
-import { Shield, Smartphone, Download, Copy, Zap, Globe, Lock, Users } from "lucide-react"
+import { Shield, Smartphone, Download, Copy, Zap, Globe, Lock, Users, Package, Barcode, Truck } from "lucide-react"
 
 export default function FeaturesPage() {
   const features = [
@@ -11,7 +11,7 @@ export default function FeaturesPage() {
       icon: Shield,
       title: "Privacy First",
       description:
-        "All QR code generation happens locally in your browser. Your Wi-Fi credentials never leave your device.",
+        "All QR code generation happens locally in your browser. Your credentials never leave your device.",
       badge: "Secure",
     },
     {
@@ -30,7 +30,7 @@ export default function FeaturesPage() {
     {
       icon: Copy,
       title: "Easy Sharing",
-      description: "Copy the Wi-Fi configuration string to clipboard for use in other applications or manual setup.",
+      description: "Copy configuration strings to clipboard for use in other applications or manual setup.",
       badge: "Convenient",
     },
     {
@@ -42,7 +42,7 @@ export default function FeaturesPage() {
     {
       icon: Globe,
       title: "Universal Compatibility",
-      description: "Works with all modern devices and QR code scanners. Supports WPA, WEP, and open networks.",
+      description: "Works with all modern devices and QR code scanners. Supports multiple formats and standards.",
       badge: "Compatible",
     },
     {
@@ -57,6 +57,30 @@ export default function FeaturesPage() {
       description: "Perfect for sharing Wi-Fi with guests, customers, or visitors without revealing your password.",
       badge: "Social",
     },
+    {
+      icon: Package,
+      title: "Product QR Codes",
+      description: "Generate GS1 Digital Link QR codes for product tracking, supply chain, and traceability.",
+      badge: "Enterprise",
+    },
+    {
+      icon: Barcode,
+      title: "GTIN Encoding",
+      description: "Encode product GTINs, serial numbers, batch codes, and expiry dates in QR format.",
+      badge: "Professional",
+    },
+    {
+      icon: Truck,
+      title: "Supply Chain Ready",
+      description: "Standards-compliant product QR codes for inventory management and logistics tracking.",
+      badge: "Industry Standard",
+    },
+    {
+      icon: Smartphone,
+      title: "Multi-Format Scanning",
+      description: "Scanner supports both device cameras and network IP cameras for QR code scanning.",
+      badge: "Advanced",
+    },
   ]
 
   return (
@@ -69,7 +93,7 @@ export default function FeaturesPage() {
             <div className="text-center mb-12">
               <h1 className="text-4xl font-bold text-balance mb-4">Powerful Features</h1>
               <p className="text-xl text-muted-foreground text-pretty max-w-2xl mx-auto">
-                Everything you need to generate and share Wi-Fi QR codes securely and efficiently.
+                Everything you need to generate and share Wi-Fi and Product QR codes securely and efficiently.
               </p>
             </div>
 
@@ -93,9 +117,9 @@ export default function FeaturesPage() {
             </div>
 
             <div className="mt-16 text-center">
-              <Card className="max-w-2xl mx-auto">
+              <Card className="max-w-3xl mx-auto">
                 <CardHeader>
-                  <CardTitle className="text-2xl">Why Choose Our Generator?</CardTitle>
+                  <CardTitle className="text-2xl">Why Choose KDMZ QR Generator?</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4 text-left">
                   <div className="grid gap-4 md:grid-cols-2">
@@ -109,13 +133,26 @@ export default function FeaturesPage() {
                     <div>
                       <h3 className="font-semibold mb-2">Always Free</h3>
                       <p className="text-sm text-muted-foreground">
-                        Generate unlimited Wi-Fi QR codes at no cost. No hidden fees or premium features.
+                        Generate unlimited Wi-Fi and Product QR codes at no cost. No hidden fees or premium features.
                       </p>
                     </div>
                     <div>
-                      <h3 className="font-semibold mb-2">Open Source</h3>
+                      <h3 className="font-semibold mb-2">Dual Functionality</h3>
                       <p className="text-sm text-muted-foreground">
-                        Built with transparency in mind. You can verify our privacy claims and contribute improvements.
+                        Generate Wi-Fi QR codes for network sharing and Product QR codes for enterprise supply chain
+                        management.
+                      </p>
+                    </div>
+                    <div>
+                      <h3 className="font-semibold mb-2">Advanced Scanning</h3>
+                      <p className="text-sm text-muted-foreground">
+                        Scan QR codes using device cameras or connect network IP cameras for industrial applications.
+                      </p>
+                    </div>
+                    <div>
+                      <h3 className="font-semibold mb-2">GS1 Compliant</h3>
+                      <p className="text-sm text-muted-foreground">
+                        Product QR codes follow GS1 Digital Link standards for professional supply chain integration.
                       </p>
                     </div>
                     <div>
