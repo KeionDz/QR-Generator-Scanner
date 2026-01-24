@@ -207,16 +207,43 @@ export default function QRScanner() {
     setIsLoadingStream(true)
   }
 
-  const retryConnection = async () => {
-    setRetrying(true)
-    setIsLoadingStream(true)
-    setConnectionLost(false)
+  const [retryIntervalId, setRetryIntervalId] = useState<ReturnType<typeof setInterval> | null>(null)
 
-    // try reconnect
-    await connectNetworkCamera()
-
-    setRetrying(false)
+useEffect(() => {
+  return () => {
+    if (retryIntervalId) clearInterval(retryIntervalId)
   }
+}, [retryIntervalId])
+
+const retryConnection = async () => {
+  setRetrying(true)
+  setIsLoadingStream(true)
+  setConnectionLost(false)
+
+  // stop existing retry loop
+  if (retryIntervalId) {
+    clearInterval(retryIntervalId)
+    setRetryIntervalId(null)
+  }
+
+  const interval = setInterval(async () => {
+    const url = networkCameraUrl.trim()
+    if (!url) return
+
+    const isValid = await validateStreamUrl(url)
+
+    if (isValid) {
+      await connectNetworkCamera()
+      clearInterval(interval)
+      setRetryIntervalId(null)
+      setRetrying(false)
+    }
+  }, 2000)
+
+  setRetryIntervalId(interval)
+}
+
+
 
   // Device camera stream
   useEffect(() => {
