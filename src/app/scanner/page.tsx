@@ -124,8 +124,17 @@ const isValidScannedData = (type: QRType, data: ScannedData) => {
     return !!(p.gtin || p.product || p.serial || p.batch || p.expiry || p.info)
   }
 
-  // unknown -> must contain text
   return !!((data as WifiDetails).ssid?.trim())
+}
+
+// validate stream URL by checking HEAD response
+const validateStreamUrl = async (url: string) => {
+  try {
+    const res = await fetch(url, { method: "HEAD" })
+    return res.ok
+  } catch {
+    return false
+  }
 }
 
 export default function QRScanner() {
@@ -133,6 +142,7 @@ export default function QRScanner() {
   const networkVideoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
+  const [zoom, setZoom] = useState(1)
   const [isScanning, setIsScanning] = useState(false)
   const [scannedData, setScannedData] = useState<ScannedData>(null)
   const [qrType, setQRType] = useState<QRType>("unknown")
@@ -141,8 +151,14 @@ export default function QRScanner() {
   const [networkCameraUrl, setNetworkCameraUrl] = useState("")
   const [isNetworkCameraConnected, setIsNetworkCameraConnected] = useState(false)
   const [cameraPreviewUrl, setCameraPreviewUrl] = useState("")
-  const { toast } = useToast()
+  const [isLoadingStream, setIsLoadingStream] = useState(false)
+  const [isValidatingUrl, setIsValidatingUrl] = useState(false)
+
   const [urlError, setUrlError] = useState<string | null>(null)
+  const [connectionLost, setConnectionLost] = useState(false)
+  const [retrying, setRetrying] = useState(false)
+
+  const { toast } = useToast()
 
   const stopCamera = () => {
     if (deviceVideoRef.current && deviceVideoRef.current.srcObject) {
@@ -159,6 +175,10 @@ export default function QRScanner() {
     setQRType("unknown")
     setIsNetworkCameraConnected(false)
     setCameraPreviewUrl("")
+    setIsLoadingStream(false)
+    setUrlError(null)
+    setConnectionLost(false)
+    setRetrying(false)
   }
 
   const connectNetworkCamera = async () => {
@@ -169,9 +189,33 @@ export default function QRScanner() {
     }
 
     setUrlError(null)
+    setConnectionLost(false)
+    setRetrying(false)
+
+    setIsValidatingUrl(true)
+    const isValid = await validateStreamUrl(url)
+    setIsValidatingUrl(false)
+
+    if (!isValid) {
+      setUrlError("Stream URL not reachable")
+      return
+    }
+
     setCameraPreviewUrl(url)
     setIsNetworkCameraConnected(true)
     setIsScanning(true)
+    setIsLoadingStream(true)
+  }
+
+  const retryConnection = async () => {
+    setRetrying(true)
+    setIsLoadingStream(true)
+    setConnectionLost(false)
+
+    // try reconnect
+    await connectNetworkCamera()
+
+    setRetrying(false)
   }
 
   // Device camera stream
@@ -187,7 +231,7 @@ export default function QRScanner() {
           deviceVideoRef.current.srcObject = stream
         }
         setError(null)
-      } catch (err) {
+      } catch {
         setError("Camera access denied. Please enable camera permissions.")
         setIsScanning(false)
         toast({
@@ -282,34 +326,61 @@ export default function QRScanner() {
 
   // Network camera HLS stream
   useEffect(() => {
-    if (!isNetworkCameraConnected) return
-    if (scannerMode !== "network") return
+  if (!isNetworkCameraConnected) return
+  if (scannerMode !== "network") return
 
-    const url = cameraPreviewUrl || networkCameraUrl.trim()
-    const video = networkVideoRef.current
-    if (!video) return
+  const url = cameraPreviewUrl || networkCameraUrl.trim()
+  const video = networkVideoRef.current
+  if (!video) return
 
-    let hls: Hls | null = null
+  let hls: Hls | null = null
+  let retryTimeout: NodeJS.Timeout | null = null
 
-    if (Hls.isSupported()) {
-      hls = new Hls()
-      hls.loadSource(url)
-      hls.attachMedia(video)
-      hls.on(Hls.Events.MANIFEST_PARSED, async () => {
-        video.muted = true
-        await video.play()
-      })
-    } else {
-      video.src = url
+  const onPlaying = () => {
+    setIsLoadingStream(false)
+    setConnectionLost(false)
+  }
+
+  const onError = () => {
+    setIsLoadingStream(true)
+    setConnectionLost(true)
+
+    retryTimeout = setTimeout(() => {
+      setIsLoadingStream(false)
+    }, 1500)
+  }
+
+  video.addEventListener("playing", onPlaying)
+  video.addEventListener("error", onError)
+
+  if (Hls.isSupported()) {
+    hls = new Hls()
+    hls.loadSource(url)
+    hls.attachMedia(video)
+
+    hls.on(Hls.Events.MANIFEST_PARSED, async () => {
       video.muted = true
-      video.play()
-    }
+      await video.play()
+    })
 
-    return () => {
-      if (hls) hls.destroy()
-      if (video) video.src = ""
-    }
-  }, [isNetworkCameraConnected, scannerMode, cameraPreviewUrl, networkCameraUrl])
+    hls.on(Hls.Events.ERROR, () => {
+      onError()
+    })
+  } else {
+    video.src = url
+    video.muted = true
+    video.play().catch(() => onError())
+  }
+
+  return () => {
+    video.removeEventListener("playing", onPlaying)
+    video.removeEventListener("error", onError)
+
+    if (retryTimeout) clearTimeout(retryTimeout)
+    if (hls) hls.destroy()
+    if (video) video.src = ""
+  }
+}, [isNetworkCameraConnected, scannerMode, cameraPreviewUrl, networkCameraUrl])
 
   return (
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
@@ -321,7 +392,7 @@ export default function QRScanner() {
             <div className="text-center mb-12">
               <h1 className="text-4xl font-bold text-balance mb-4">QR Code Scanner</h1>
               <p className="text-xl text-muted-foreground text-pretty max-w-2xl mx-auto">
-                Scan Wi-Fi QR codes to quickly view and extract network information.
+                Scan QR codes to quickly view and extract network information.
               </p>
             </div>
 
@@ -379,15 +450,25 @@ export default function QRScanner() {
                     {scannerMode === "network" && (
                       <div className="space-y-4">
                         <Label htmlFor="camera-url">Network Camera Stream URL</Label>
-                        <Input
-                          id="camera-url"
-                          placeholder="e.g., http:/ip/index.m3u8"
-                          value={networkCameraUrl}
-                          onChange={(e) => {
-                            setNetworkCameraUrl(e.target.value)
-                            setUrlError(null)
-                          }}
-                        />
+
+                        <div className="relative">
+                          <Input
+                            id="camera-url"
+                            placeholder="e.g., http:/ip/index.m3u8"
+                            value={networkCameraUrl}
+                            onChange={(e) => {
+                              setNetworkCameraUrl(e.target.value)
+                              setUrlError(null)
+                            }}
+                            className="pr-10"
+                          />
+
+                          {isValidatingUrl && (
+                            <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-500" />
+                            </div>
+                          )}
+                        </div>
 
                         {urlError && (
                           <p className="text-sm text-destructive mt-1">
@@ -424,31 +505,86 @@ export default function QRScanner() {
                 {isScanning && (
                   <div className="space-y-4">
                     {scannerMode === "network" && (
-                      <div className="relative w-full bg-muted rounded-lg overflow-hidden">
-                        <video
-                          ref={networkVideoRef}
-                          autoPlay
-                          muted
-                          playsInline
-                          className="w-full h-80 object-cover"
-                        />
-                        <div className="absolute inset-0 border-2 border-primary rounded-lg pointer-events-none">
-                          {/* Bigger scan box */}
-                          <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-56 h-56 border-2 border-primary rounded-lg opacity-50" />
+                      <div className="space-y-4">
+                        <div className="relative w-full bg-muted rounded-lg overflow-hidden">
+                          <video
+                            ref={networkVideoRef}
+                            autoPlay
+                            muted
+                            playsInline
+                            className="w-full h-80 object-cover"
+                            style={{ transform: `scale(${zoom})`, transformOrigin: "center center" }}
+                          />
+
+                          {/* LOADING SPINNER */}
+                          {isLoadingStream && (
+                            <div className="absolute inset-0 flex items-center justify-center bg-black/40">
+                              <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-white"></div>
+                            </div>
+                          )}
+
+                          {/* CONNECTION LOST MESSAGE */}
+                          {connectionLost && !isLoadingStream && (
+                            <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 text-white p-4">
+                              <p className="font-bold text-lg">Connection Lost</p>
+                              <p className="text-sm mt-2">Please check your network or camera URL.</p>
+                              <Button onClick={retryConnection} className="mt-4">
+                                Retry
+                              </Button>
+                            </div>
+                          )}
+
+                          <div className="absolute inset-0 border-2 border-primary rounded-lg pointer-events-none">
+                            <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-56 h-56 border-2 border-primary rounded-lg opacity-50" />
+                          </div>
+                        </div>
+
+                        {/* ZOOM CONTROLS */}
+                        <div className="flex items-center gap-3">
+                          <Badge variant="secondary">Zoom</Badge>
+                          <input
+                            type="range"
+                            min={1}
+                            max={3}
+                            step={0.1}
+                            value={zoom}
+                            onChange={(e) => setZoom(Number(e.target.value))}
+                            className="w-full"
+                          />
+                          <span className="font-mono text-sm">{zoom.toFixed(1)}x</span>
                         </div>
                       </div>
                     )}
 
                     {scannerMode === "device" && (
-                      <div className="relative w-full bg-muted rounded-lg overflow-hidden">
-                        <video
-                          ref={deviceVideoRef}
-                          autoPlay
-                          playsInline
-                          className="w-full h-64 object-cover"
-                        />
-                        <div className="absolute inset-0 border-2 border-primary rounded-lg pointer-events-none">
-                          <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-32 h-32 border-2 border-primary rounded-lg opacity-50" />
+                      <div className="space-y-4">
+                        <div className="relative w-full bg-muted rounded-lg overflow-hidden">
+                          <video
+                            ref={deviceVideoRef}
+                            autoPlay
+                            playsInline
+                            muted
+                            className="w-full h-64 object-cover"
+                            style={{ transform: `scale(${zoom})`, transformOrigin: "center center" }}
+                          />
+                          <div className="absolute inset-0 border-2 border-primary rounded-lg pointer-events-none">
+                            <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-32 h-32 border-2 border-primary opacity-50" />
+                          </div>
+                        </div>
+
+                        {/* ZOOM CONTROLS */}
+                        <div className="flex items-center gap-3">
+                          <Badge variant="secondary">Zoom</Badge>
+                          <input
+                            type="range"
+                            min={1}
+                            max={3}
+                            step={0.1}
+                            value={zoom}
+                            onChange={(e) => setZoom(Number(e.target.value))}
+                            className="w-full"
+                          />
+                          <span className="font-mono text-sm">{zoom.toFixed(1)}x</span>
                         </div>
                       </div>
                     )}
