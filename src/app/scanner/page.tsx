@@ -9,7 +9,7 @@ import { Badge } from "../../components/ui/badge"
 import { useToast } from "../../hooks/use-toast"
 import { Toaster } from "../../components/ui/toaster"
 import { ThemeProvider } from "../../components/theme-provider"
-import { Wifi, Camera, Copy, AlertCircle, Wifi as Wifi2, Play, X, Link2 } from "lucide-react"
+import { Wifi, Camera, Copy, AlertCircle, Wifi as Wifi2, Play, Link2 } from "lucide-react"
 import { Header } from "../../components/header"
 import { Footer } from "../../components/footer"
 import Hls from "hls.js"
@@ -112,6 +112,22 @@ const parseQRCode = (qrData: string): { type: QRType; data: ScannedData } => {
   return { type: "unknown", data: { ssid: qrData } as WifiDetails }
 }
 
+const isValidScannedData = (type: QRType, data: ScannedData) => {
+  if (!data) return false
+
+  if (type === "wifi") {
+    return !!(data as WifiDetails).ssid
+  }
+
+  if (type === "product") {
+    const p = data as ProductDetails
+    return !!(p.gtin || p.product || p.serial || p.batch || p.expiry || p.info)
+  }
+
+  // unknown -> must contain text
+  return !!((data as WifiDetails).ssid?.trim())
+}
+
 export default function QRScanner() {
   const deviceVideoRef = useRef<HTMLVideoElement>(null)
   const networkVideoRef = useRef<HTMLVideoElement>(null)
@@ -202,7 +218,32 @@ export default function QRScanner() {
           const code = jsQR(imageData.data, imageData.width, imageData.height)
 
           if (code) {
-            const parsedData = parseQRCode(code.data)
+            const qrText = code.data?.trim() || ""
+
+            // ❌ IF NO DATA -> REFRESH PAGE
+            if (!qrText) {
+              toast({
+                title: "Invalid QR Code",
+                description: "QR scanned but contains no data.",
+                variant: "destructive",
+              })
+              window.location.reload()
+              return
+            }
+
+            const parsedData = parseQRCode(qrText)
+
+            // ❌ IF PARSED DATA IS EMPTY -> REFRESH PAGE
+            if (!isValidScannedData(parsedData.type, parsedData.data)) {
+              toast({
+                title: "Invalid QR Code",
+                description: "QR scanned but no valid data found.",
+                variant: "destructive",
+              })
+              window.location.reload()
+              return
+            }
+
             setScannedData(parsedData.data)
             setQRType(parsedData.type)
             setIsScanning(false)
@@ -387,9 +428,9 @@ export default function QRScanner() {
                           className="w-full h-80 object-cover"
                         />
                         <div className="absolute inset-0 border-2 border-primary rounded-lg pointer-events-none">
-{/* Bigger scan box */}
-<div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-56 h-56 border-2 border-primary rounded-lg opacity-50" />
-</div>
+                          {/* Bigger scan box */}
+                          <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-56 h-56 border-2 border-primary rounded-lg opacity-50" />
+                        </div>
                       </div>
                     )}
 
@@ -410,13 +451,7 @@ export default function QRScanner() {
                     <canvas ref={canvasRef} className="hidden" />
 
                     <Button
-                      onClick={() => {
-                        setIsScanning(false)
-                        if (scannerMode === "device" && deviceVideoRef.current?.srcObject) {
-                          const tracks = (deviceVideoRef.current.srcObject as MediaStream).getTracks()
-                          tracks.forEach((track) => track.stop())
-                        }
-                      }}
+                      onClick={resetScanner}
                       variant="outline"
                       className="w-full bg-transparent"
                     >
