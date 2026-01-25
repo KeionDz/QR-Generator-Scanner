@@ -1,18 +1,16 @@
 "use client"
 
-import { Input } from "../../components/ui/input"
-import { Label } from "../../components/ui/label"
-import { useState, useRef, useEffect } from "react"
-import { Button } from "../../components/ui/button"
+import { useState, useRef } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card"
 import { Badge } from "../../components/ui/badge"
 import { useToast } from "../../hooks/use-toast"
 import { Toaster } from "../../components/ui/toaster"
 import { ThemeProvider } from "../../components/theme-provider"
-import { Wifi, Camera, Copy, AlertCircle, Wifi as Wifi2, Play, Link2 } from "lucide-react"
+import { Wifi, Camera, Copy, AlertCircle } from "lucide-react"
 import { Header } from "../../components/header"
 import { Footer } from "../../components/footer"
-import Hls from "hls.js"
+import { DeviceCameraScanner } from "../../components/device-camera-scanner"
+import { NetworkCameraScanner } from "../../components/network-camera-scanner"
 
 interface WifiDetails {
   ssid?: string
@@ -80,31 +78,6 @@ const parseProductString = (qrData: string): ProductDetails => {
   return details
 }
 
-const copyToClipboard = async (text: string, toast: any) => {
-  try {
-    await navigator.clipboard.writeText(text)
-    toast({
-      title: "Copied to Clipboard",
-      description: "Information copied successfully",
-    })
-  } catch {
-    toast({
-      title: "Copy Failed",
-      description: "Could not copy to clipboard",
-      variant: "destructive",
-    })
-  }
-}
-
-const isUrl = (text: string) => {
-  try {
-    new URL(text)
-    return true
-  } catch {
-    return false
-  }
-}
-
 const parseQRCode = (qrData: string): { type: QRType; data: ScannedData } => {
   if (qrData.startsWith("WIFI:")) return { type: "wifi", data: parseWifiString(qrData) }
   if (qrData.includes("?gtin=") || qrData.includes("?product=")) return { type: "product", data: parseProductString(qrData) }
@@ -114,300 +87,73 @@ const parseQRCode = (qrData: string): { type: QRType; data: ScannedData } => {
 
 const isValidScannedData = (type: QRType, data: ScannedData) => {
   if (!data) return false
-
-  if (type === "wifi") {
-    return !!(data as WifiDetails).ssid
-  }
-
+  if (type === "wifi") return !!(data as WifiDetails).ssid
   if (type === "product") {
     const p = data as ProductDetails
     return !!(p.gtin || p.product || p.serial || p.batch || p.expiry || p.info)
   }
-
   return !!((data as WifiDetails).ssid?.trim())
 }
 
-// validate stream URL by checking HEAD response
-const validateStreamUrl = async (url: string) => {
-  try {
-    const res = await fetch(url, { method: "HEAD" })
-    return res.ok
-  } catch {
-    return false
-  }
-}
-
 export default function QRScanner() {
-  const deviceVideoRef = useRef<HTMLVideoElement>(null)
-  const networkVideoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
-
-  const [zoom, setZoom] = useState(1)
   const [isScanning, setIsScanning] = useState(false)
   const [scannedData, setScannedData] = useState<ScannedData>(null)
   const [qrType, setQRType] = useState<QRType>("unknown")
-  const [error, setError] = useState<string | null>(null)
   const [scannerMode, setScannerMode] = useState<ScannerMode>("device")
-  const [networkCameraUrl, setNetworkCameraUrl] = useState("")
-  const [isNetworkCameraConnected, setIsNetworkCameraConnected] = useState(false)
-  const [cameraPreviewUrl, setCameraPreviewUrl] = useState("")
-  const [isLoadingStream, setIsLoadingStream] = useState(false)
-  const [isValidatingUrl, setIsValidatingUrl] = useState(false)
-
-  const [urlError, setUrlError] = useState<string | null>(null)
-  const [connectionLost, setConnectionLost] = useState(false)
-  const [retrying, setRetrying] = useState(false)
-
   const { toast } = useToast()
 
-  const stopCamera = () => {
-    if (deviceVideoRef.current && deviceVideoRef.current.srcObject) {
-      const tracks = (deviceVideoRef.current.srcObject as MediaStream).getTracks()
-      tracks.forEach((track) => track.stop())
-      deviceVideoRef.current.srcObject = null
+  const handleQRDetected = (qrText: string) => {
+    if (!qrText.trim()) {
+      toast({
+        title: "Invalid QR Code",
+        description: "QR scanned but contains no data.",
+        variant: "destructive",
+      })
+      return
     }
+
+    const parsedData = parseQRCode(qrText)
+
+    if (!isValidScannedData(parsedData.type, parsedData.data)) {
+      toast({
+        title: "Invalid QR Code",
+        description: "QR scanned but no valid data found.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setScannedData(parsedData.data)
+    setQRType(parsedData.type)
+
+    toast({
+      title: `${parsedData.type === "wifi" ? "Wi-Fi" : parsedData.type === "product" ? "Product" : "QR Code"} QR Code Scanned`,
+      description: "Information extracted successfully",
+    })
   }
 
   const resetScanner = () => {
-    stopCamera()
     setIsScanning(false)
     setScannedData(null)
     setQRType("unknown")
-    setIsNetworkCameraConnected(false)
-    setCameraPreviewUrl("")
-    setIsLoadingStream(false)
-    setUrlError(null)
-    setConnectionLost(false)
-    setRetrying(false)
   }
 
-  const connectNetworkCamera = async () => {
-    const url = networkCameraUrl.trim()
-    if (!url) {
-      setUrlError("Stream URL is required")
-      return
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text)
+      toast({
+        title: "Copied to Clipboard",
+        description: "Information copied successfully",
+      })
+    } catch {
+      toast({
+        title: "Copy Failed",
+        description: "Could not copy to clipboard",
+        variant: "destructive",
+      })
     }
-
-    setUrlError(null)
-    setConnectionLost(false)
-    setRetrying(false)
-
-    setIsValidatingUrl(true)
-    const isValid = await validateStreamUrl(url)
-    setIsValidatingUrl(false)
-
-    if (!isValid) {
-      setUrlError("Stream URL not reachable")
-      return
-    }
-
-    setCameraPreviewUrl(url)
-    setIsNetworkCameraConnected(true)
-    setIsScanning(true)
-    setIsLoadingStream(true)
   }
-
-  const [retryIntervalId, setRetryIntervalId] = useState<ReturnType<typeof setInterval> | null>(null)
-
-useEffect(() => {
-  return () => {
-    if (retryIntervalId) clearInterval(retryIntervalId)
-  }
-}, [retryIntervalId])
-
-const retryConnection = async () => {
-  setRetrying(true)
-  setIsLoadingStream(true)
-  setConnectionLost(false)
-
-  // stop existing retry loop
-  if (retryIntervalId) {
-    clearInterval(retryIntervalId)
-    setRetryIntervalId(null)
-  }
-
-  const interval = setInterval(async () => {
-    const url = networkCameraUrl.trim()
-    if (!url) return
-
-    const isValid = await validateStreamUrl(url)
-
-    if (isValid) {
-      await connectNetworkCamera()
-      clearInterval(interval)
-      setRetryIntervalId(null)
-      setRetrying(false)
-    }
-  }, 2000)
-
-  setRetryIntervalId(interval)
-}
-
-
-
-  // Device camera stream
-  useEffect(() => {
-    if (!isScanning || scannerMode !== "device") return
-
-    const startCamera = async () => {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "environment" },
-        })
-        if (deviceVideoRef.current) {
-          deviceVideoRef.current.srcObject = stream
-        }
-        setError(null)
-      } catch {
-        setError("Camera access denied. Please enable camera permissions.")
-        setIsScanning(false)
-        toast({
-          title: "Camera Error",
-          description: "Unable to access camera. Please check permissions.",
-          variant: "destructive",
-        })
-      }
-    }
-
-    startCamera()
-
-    return () => {
-      stopCamera()
-    }
-  }, [isScanning, scannerMode, toast])
-
-  // QR scanning
-  useEffect(() => {
-    if (!isScanning) return
-    if (!canvasRef.current) return
-
-    const video = scannerMode === "device"
-      ? deviceVideoRef.current
-      : networkVideoRef.current
-
-    if (!video) return
-
-    const canvas = canvasRef.current
-    const ctx = canvas.getContext("2d")
-    let animationId: number
-
-    const scan = async () => {
-      if (video.readyState === video.HAVE_ENOUGH_DATA && ctx) {
-        canvas.width = video.videoWidth
-        canvas.height = video.videoHeight
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
-
-        try {
-          const jsQR = (await import("jsqr")).default
-          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
-          const code = jsQR(imageData.data, imageData.width, imageData.height)
-
-          if (code) {
-            const qrText = code.data?.trim() || ""
-
-            if (!qrText) {
-              toast({
-                title: "Invalid QR Code",
-                description: "QR scanned but contains no data.",
-                variant: "destructive",
-              })
-              resetScanner()
-              return
-            }
-
-            const parsedData = parseQRCode(qrText)
-
-            if (!isValidScannedData(parsedData.type, parsedData.data)) {
-              toast({
-                title: "Invalid QR Code",
-                description: "QR scanned but no valid data found.",
-                variant: "destructive",
-              })
-              resetScanner()
-              return
-            }
-
-            setScannedData(parsedData.data)
-            setQRType(parsedData.type)
-            setIsScanning(false)
-
-            if (scannerMode === "device") stopCamera()
-
-            toast({
-              title: `${parsedData.type === "wifi" ? "Wi-Fi" : parsedData.type === "product" ? "Product" : "QR Code"} QR Code Scanned`,
-              description: `Information extracted successfully`,
-            })
-          }
-        } catch {
-          // ignore errors
-        }
-      }
-
-      animationId = requestAnimationFrame(scan)
-    }
-
-    animationId = requestAnimationFrame(scan)
-
-    return () => cancelAnimationFrame(animationId)
-  }, [isScanning, scannerMode, toast])
-
-  // Network camera HLS stream
-  useEffect(() => {
-  if (!isNetworkCameraConnected) return
-  if (scannerMode !== "network") return
-
-  const url = cameraPreviewUrl || networkCameraUrl.trim()
-  const video = networkVideoRef.current
-  if (!video) return
-
-  let hls: Hls | null = null
-  let retryTimeout: NodeJS.Timeout | null = null
-
-  const onPlaying = () => {
-    setIsLoadingStream(false)
-    setConnectionLost(false)
-  }
-
-  const onError = () => {
-    setIsLoadingStream(true)
-    setConnectionLost(true)
-
-    retryTimeout = setTimeout(() => {
-      setIsLoadingStream(false)
-    }, 1500)
-  }
-
-  video.addEventListener("playing", onPlaying)
-  video.addEventListener("error", onError)
-
-  if (Hls.isSupported()) {
-    hls = new Hls()
-    hls.loadSource(url)
-    hls.attachMedia(video)
-
-    hls.on(Hls.Events.MANIFEST_PARSED, async () => {
-      video.muted = true
-      await video.play()
-    })
-
-    hls.on(Hls.Events.ERROR, () => {
-      onError()
-    })
-  } else {
-    video.src = url
-    video.muted = true
-    video.play().catch(() => onError())
-  }
-
-  return () => {
-    video.removeEventListener("playing", onPlaying)
-    video.removeEventListener("error", onError)
-
-    if (retryTimeout) clearTimeout(retryTimeout)
-    if (hls) hls.destroy()
-    if (video) video.src = ""
-  }
-}, [isNetworkCameraConnected, scannerMode, cameraPreviewUrl, networkCameraUrl])
 
   return (
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
@@ -419,7 +165,7 @@ const retryConnection = async () => {
             <div className="text-center mb-12">
               <h1 className="text-4xl font-bold text-balance mb-4">QR Code Scanner</h1>
               <p className="text-xl text-muted-foreground text-pretty max-w-2xl mx-auto">
-                Scan QR codes to quickly view and extract network information.
+                Scan QR codes to quickly view and extract network or product information.
               </p>
             </div>
 
@@ -432,16 +178,8 @@ const retryConnection = async () => {
                 <CardDescription>Point your camera at a Wi-Fi or Product QR code to extract the information</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
-
                 {!isScanning && !scannedData && (
                   <>
-                    {error && (
-                      <div className="flex gap-3 p-4 bg-destructive/10 border border-destructive/30 rounded-lg">
-                        <AlertCircle className="h-5 w-5 text-destructive flex-shrink-0 mt-0.5" />
-                        <p className="text-sm text-destructive">{error}</p>
-                      </div>
-                    )}
-
                     {/* Mode Selection */}
                     <div className="flex gap-2 border-b pb-4">
                       <button
@@ -467,168 +205,58 @@ const retryConnection = async () => {
                         }`}
                       >
                         <div className="flex items-center gap-2">
-                          <Wifi2 className="h-4 w-4" />
+                          <Wifi className="h-4 w-4" />
                           Network Camera
                         </div>
                       </button>
                     </div>
 
-                    {/* NETWORK MODE */}
-                    {scannerMode === "network" && (
-                      <div className="space-y-4">
-                        <Label htmlFor="camera-url">Network Camera Stream URL</Label>
-
-                        <div className="relative">
-                          <Input
-                            id="camera-url"
-                            placeholder="e.g., http:/ip/index.m3u8"
-                            value={networkCameraUrl}
-                            onChange={(e) => {
-                              setNetworkCameraUrl(e.target.value)
-                              setUrlError(null)
-                            }}
-                            className="pr-10"
-                          />
-
-                          {isValidatingUrl && (
-                            <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-500" />
-                            </div>
-                          )}
-                        </div>
-
-                        {urlError && (
-                          <p className="text-sm text-destructive mt-1">
-                            {urlError}
-                          </p>
-                        )}
-
-                        <Button
-                          onClick={connectNetworkCamera}
-                          size="lg"
-                          className="w-full"
-                        >
-                          <Play className="h-4 w-4 mr-2" />
-                          Connect & Auto Scan
-                        </Button>
-                      </div>
+                    {/* Device Camera Scanner */}
+                    {scannerMode === "device" && (
+                      <DeviceCameraScanner
+                        isScanning={isScanning}
+                        setIsScanning={setIsScanning}
+                        onQRDetected={handleQRDetected}
+                        canvasRef={canvasRef}
+                      />
                     )}
 
-                    {/* DEVICE MODE */}
-                    {scannerMode === "device" && (
-                      <Button
-                        onClick={() => setIsScanning(true)}
-                        size="lg"
-                        className="w-full"
-                      >
-                        <Camera className="h-4 w-4 mr-2" />
-                        Start Scanning
-                      </Button>
+                    {/* Network Camera Scanner */}
+                    {scannerMode === "network" && (
+                      <NetworkCameraScanner
+                        isScanning={isScanning}
+                        setIsScanning={setIsScanning}
+                        onQRDetected={handleQRDetected}
+                        canvasRef={canvasRef}
+                      />
                     )}
                   </>
                 )}
 
-                {/* SCANNING PREVIEW */}
+                {/* Scanning Preview */}
                 {isScanning && (
                   <div className="space-y-4">
-                    {scannerMode === "network" && (
-                      <div className="space-y-4">
-                        <div className="relative w-full bg-muted rounded-lg overflow-hidden">
-                          <video
-                            ref={networkVideoRef}
-                            autoPlay
-                            muted
-                            playsInline
-                            className="w-full h-80 object-cover"
-                            style={{ transform: `scale(${zoom})`, transformOrigin: "center center" }}
-                          />
-
-                          {/* LOADING SPINNER */}
-                          {isLoadingStream && (
-                            <div className="absolute inset-0 flex items-center justify-center bg-black/40">
-                              <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-white"></div>
-                            </div>
-                          )}
-
-                          {/* CONNECTION LOST MESSAGE */}
-                          {connectionLost && !isLoadingStream && (
-                            <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 text-white p-4">
-                              <p className="font-bold text-lg">Connection Lost</p>
-                              <p className="text-sm mt-2">Please check your network or camera URL.</p>
-                              <Button onClick={retryConnection} className="mt-4">
-                                Retry
-                              </Button>
-                            </div>
-                          )}
-
-                          <div className="absolute inset-0 border-2 border-primary rounded-lg pointer-events-none">
-                            <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-56 h-56 border-2 border-primary rounded-lg opacity-50" />
-                          </div>
-                        </div>
-
-                        {/* ZOOM CONTROLS */}
-                        <div className="flex items-center gap-3">
-                          <Badge variant="secondary">Zoom</Badge>
-                          <input
-                            type="range"
-                            min={1}
-                            max={3}
-                            step={0.1}
-                            value={zoom}
-                            onChange={(e) => setZoom(Number(e.target.value))}
-                            className="w-full"
-                          />
-                          <span className="font-mono text-sm">{zoom.toFixed(1)}x</span>
-                        </div>
-                      </div>
-                    )}
-
                     {scannerMode === "device" && (
-                      <div className="space-y-4">
-                        <div className="relative w-full bg-muted rounded-lg overflow-hidden">
-                          <video
-                            ref={deviceVideoRef}
-                            autoPlay
-                            playsInline
-                            muted
-                            className="w-full h-64 object-cover"
-                            style={{ transform: `scale(${zoom})`, transformOrigin: "center center" }}
-                          />
-                          <div className="absolute inset-0 border-2 border-primary rounded-lg pointer-events-none">
-                            <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-32 h-32 border-2 border-primary opacity-50" />
-                          </div>
-                        </div>
-
-                        {/* ZOOM CONTROLS */}
-                        <div className="flex items-center gap-3">
-                          <Badge variant="secondary">Zoom</Badge>
-                          <input
-                            type="range"
-                            min={1}
-                            max={3}
-                            step={0.1}
-                            value={zoom}
-                            onChange={(e) => setZoom(Number(e.target.value))}
-                            className="w-full"
-                          />
-                          <span className="font-mono text-sm">{zoom.toFixed(1)}x</span>
-                        </div>
-                      </div>
+                      <DeviceCameraScanner
+                        isScanning={isScanning}
+                        setIsScanning={setIsScanning}
+                        onQRDetected={handleQRDetected}
+                        canvasRef={canvasRef}
+                      />
                     )}
 
-                    <canvas ref={canvasRef} className="hidden" />
-
-                    <Button
-                      onClick={resetScanner}
-                      variant="outline"
-                      className="w-full bg-transparent"
-                    >
-                      Cancel
-                    </Button>
+                    {scannerMode === "network" && (
+                      <NetworkCameraScanner
+                        isScanning={isScanning}
+                        setIsScanning={setIsScanning}
+                        onQRDetected={handleQRDetected}
+                        canvasRef={canvasRef}
+                      />
+                    )}
                   </div>
                 )}
 
-                {/* RESULT */}
+                {/* Scanned Data Display */}
                 {scannedData && (
                   <div className="space-y-6">
                     <div className="p-4 bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-900 rounded-lg">
@@ -637,28 +265,7 @@ const retryConnection = async () => {
                       </p>
                     </div>
 
-                    {/* URL PREVIEW */}
-                    {scannedData &&
-                      "ssid" in scannedData &&
-                      scannedData.ssid &&
-                      isUrl(scannedData.ssid) && (
-                        <div className="space-y-2">
-                          <div className="flex items-center gap-2">
-                            <Link2 className="h-5 w-5" />
-                            <p className="font-medium">Link Preview</p>
-                          </div>
-                          <a
-                            href={scannedData.ssid}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-blue-600 underline"
-                          >
-                            {scannedData.ssid}
-                          </a>
-                        </div>
-                      )}
-
-                    {/* WiFi Display */}
+                    {/* WiFi QR Display */}
                     {qrType === "wifi" && scannedData && "ssid" in scannedData && (
                       <div className="space-y-4">
                         {scannedData.ssid && (
@@ -671,9 +278,12 @@ const retryConnection = async () => {
                                 readOnly
                                 className="flex-1 px-3 py-2 border rounded-md bg-muted font-mono text-sm"
                               />
-                              <Button variant="outline" size="sm" onClick={() => copyToClipboard(scannedData.ssid || "", toast)}>
+                              <button
+                                onClick={() => copyToClipboard(scannedData.ssid || "")}
+                                className="p-2 hover:bg-muted rounded-md transition-colors"
+                              >
                                 <Copy className="h-4 w-4" />
-                              </Button>
+                              </button>
                             </div>
                           </div>
                         )}
@@ -688,9 +298,12 @@ const retryConnection = async () => {
                                 readOnly
                                 className="flex-1 px-3 py-2 border rounded-md bg-muted font-mono text-sm"
                               />
-                              <Button variant="outline" size="sm" onClick={() => copyToClipboard(scannedData.password || "", toast)}>
+                              <button
+                                onClick={() => copyToClipboard(scannedData.password || "")}
+                                className="p-2 hover:bg-muted rounded-md transition-colors"
+                              >
                                 <Copy className="h-4 w-4" />
-                              </Button>
+                              </button>
                             </div>
                           </div>
                         )}
@@ -715,7 +328,7 @@ const retryConnection = async () => {
                       </div>
                     )}
 
-                    {/* Product Display */}
+                    {/* Product QR Display */}
                     {qrType === "product" && scannedData && "type" in scannedData && (
                       <div className="space-y-4">
                         {scannedData.product && (
@@ -728,9 +341,12 @@ const retryConnection = async () => {
                                 readOnly
                                 className="flex-1 px-3 py-2 border rounded-md bg-muted font-mono text-sm"
                               />
-                              <Button variant="outline" size="sm" onClick={() => copyToClipboard(scannedData.product || "", toast)}>
+                              <button
+                                onClick={() => copyToClipboard(scannedData.product || "")}
+                                className="p-2 hover:bg-muted rounded-md transition-colors"
+                              >
                                 <Copy className="h-4 w-4" />
-                              </Button>
+                              </button>
                             </div>
                           </div>
                         )}
@@ -745,9 +361,12 @@ const retryConnection = async () => {
                                 readOnly
                                 className="flex-1 px-3 py-2 border rounded-md bg-muted font-mono text-sm"
                               />
-                              <Button variant="outline" size="sm" onClick={() => copyToClipboard(scannedData.gtin || "", toast)}>
+                              <button
+                                onClick={() => copyToClipboard(scannedData.gtin || "")}
+                                className="p-2 hover:bg-muted rounded-md transition-colors"
+                              >
                                 <Copy className="h-4 w-4" />
-                              </Button>
+                              </button>
                             </div>
                           </div>
                         )}
@@ -763,9 +382,12 @@ const retryConnection = async () => {
                                   readOnly
                                   className="flex-1 px-3 py-2 border rounded-md bg-muted font-mono text-sm text-xs"
                                 />
-                                <Button variant="outline" size="sm" onClick={() => copyToClipboard(scannedData.serial || "", toast)}>
+                                <button
+                                  onClick={() => copyToClipboard(scannedData.serial || "")}
+                                  className="p-2 hover:bg-muted rounded-md transition-colors"
+                                >
                                   <Copy className="h-4 w-4" />
-                                </Button>
+                                </button>
                               </div>
                             </div>
                           )}
@@ -780,9 +402,12 @@ const retryConnection = async () => {
                                   readOnly
                                   className="flex-1 px-3 py-2 border rounded-md bg-muted font-mono text-sm text-xs"
                                 />
-                                <Button variant="outline" size="sm" onClick={() => copyToClipboard(scannedData.batch || "", toast)}>
+                                <button
+                                  onClick={() => copyToClipboard(scannedData.batch || "")}
+                                  className="p-2 hover:bg-muted rounded-md transition-colors"
+                                >
                                   <Copy className="h-4 w-4" />
-                                </Button>
+                                </button>
                               </div>
                             </div>
                           )}
@@ -811,23 +436,42 @@ const retryConnection = async () => {
                       </div>
                     )}
 
-                    <Button
+                    {/* Unknown Format */}
+                    {qrType === "unknown" && scannedData && "ssid" in scannedData && (
+                      <div className="space-y-4">
+                        <div className="p-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900 rounded-lg">
+                          <p className="text-sm text-amber-800 dark:text-amber-200">Unknown QR code format detected</p>
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Raw QR Data</label>
+                          <textarea
+                            value={scannedData.ssid}
+                            readOnly
+                            className="w-full px-3 py-2 border rounded-md bg-muted font-mono text-sm"
+                            rows={3}
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    <button
                       onClick={resetScanner}
-                      variant="outline"
-                      className="w-full bg-transparent"
+                      className="w-full px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
                     >
                       Scan Another QR Code
-                    </Button>
+                    </button>
                   </div>
                 )}
               </CardContent>
             </Card>
+
+            <canvas ref={canvasRef} hidden />
           </div>
         </main>
 
         <Footer />
+        <Toaster />
       </div>
-      <Toaster />
     </ThemeProvider>
   )
 }

@@ -4,14 +4,15 @@ import { GeistSans } from "geist/font/sans"
 import { GeistMono } from "geist/font/mono"
 import { Analytics } from "@vercel/analytics/next"
 import { Suspense } from "react"
+import { LoadingScreen } from "../components/loading-screen"
 import "./globals.css"
 
 export const metadata: Metadata = {
-  title: "Wi-Fi QR Generator - Easy Network Sharing",
+  title: "KDMZ QR Generator - Wi-Fi & Product QR Codes",
   description:
-    "Generate QR codes for your Wi-Fi networks. Share your Wi-Fi credentials securely and easily with guests.",
+    "Generate QR codes for Wi-Fi networks and products. Share Wi-Fi credentials securely or manage product supply chains with GS1 Digital Link format.",
   generator: "v0.app",
-  keywords: "wifi, qr code, generator, network, sharing, wireless",
+  keywords: "wifi, qr code, generator, network, sharing, wireless, product, barcode, supply chain",
 }
 
 export default function RootLayout({
@@ -22,7 +23,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`font-sans ${GeistSans.variable} ${GeistMono.variable}`}>
-        <Suspense fallback={<div>Loading...</div>}>{children}</Suspense>
+        <Suspense fallback={<LoadingScreen />}>{children}</Suspense>
         <Analytics />
       </body>
     </html>
