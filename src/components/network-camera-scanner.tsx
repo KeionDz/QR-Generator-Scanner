@@ -15,7 +15,7 @@ interface NetworkCameraScannerProps {
   isScanning: boolean
   setIsScanning: (value: boolean) => void
   onQRDetected: (qrText: string) => void
-  canvasRef: React.RefObject<HTMLCanvasElement>
+  canvasRef: React.RefObject<HTMLCanvasElement | null>
 }
 
 export function NetworkCameraScanner({

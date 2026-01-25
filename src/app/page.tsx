@@ -1,21 +1,5 @@
 "use client"
 
-import { Badge } from "../components/ui/badge"
-import { Textarea } from "../components/ui/textarea"
-import { Checkbox } from "../components/ui/checkbox"
-import { Button } from "../components/ui/button"
-import { SelectItem } from "../components/ui/select"
-import { SelectContent } from "../components/ui/select"
-import { SelectValue } from "../components/ui/select"
-import { SelectTrigger } from "../components/ui/select"
-import { Select } from "../components/ui/select"
-import { Input } from "../components/ui/input"
-import { Label } from "../components/ui/label"
-import { CardContent } from "../components/ui/card"
-import { CardDescription } from "../components/ui/card"
-import { CardTitle } from "../components/ui/card"
-import { CardHeader } from "../components/ui/card"
-import { Card } from "../components/ui/card"
 import { useMemo } from "react"
 import { useState, useCallback, useRef, useEffect } from "react"
 import { useToast } from "../hooks/use-toast"
@@ -26,10 +10,11 @@ import { Header } from "../components/header"
 import { Footer } from "../components/footer"
 import { WifiQRGenerator } from "../components/wifi-qr-generator"
 import { ProductQRGenerator } from "../components/product-qr-generator"
-import { Shield, EyeOff, Eye, Sparkles, Download, Copy } from "lucide-react" // Importing undeclared variables
+import { ActionQRGenerator } from "../components/action-qr-generator"
+import { MenuQRGenerator } from "../components/menu-qr-generator"
+import { Zap, UtensilsCrossed } from "lucide-react"
 
-import { QRCodeSVG } from "qrcode.react"
-type TabType = "wifi" | "product"
+type TabType = "wifi" | "product" | "action" | "menu"
 
 interface WifiConfig {
   ssid: string
@@ -254,6 +239,32 @@ export default function QRGenerator() {
                   Product QR Generator
                 </div>
               </button>
+              <button
+                onClick={() => setActiveTab("action")}
+                className={`px-4 py-2 font-medium border-b-2 transition-colors ${
+                  activeTab === "action"
+                    ? "border-primary text-primary"
+                    : "border-transparent text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <Zap className="h-4 w-4" />
+                  Action QR
+                </div>
+              </button>
+              <button
+                onClick={() => setActiveTab("menu")}
+                className={`px-4 py-2 font-medium border-b-2 transition-colors ${
+                  activeTab === "menu"
+                    ? "border-primary text-primary"
+                    : "border-transparent text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <UtensilsCrossed className="h-4 w-4" />
+                  Menu QR
+                </div>
+              </button>
             </div>
 
             {/* WiFi Tab Content */}
@@ -285,6 +296,12 @@ export default function QRGenerator() {
                 onGenerateSample={generateProductSample}
               />
             )}
+
+            {/* Action QR Tab Content */}
+            {activeTab === "action" && <ActionQRGenerator />}
+
+            {/* Menu QR Tab Content */}
+            {activeTab === "menu" && <MenuQRGenerator />}
 
 
           </div>

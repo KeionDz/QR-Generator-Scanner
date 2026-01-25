@@ -1,6 +1,6 @@
 "use client"
 
-import React from "react"
+import React, { useState } from "react"
 
 import { useCallback, useRef, useMemo } from "react"
 import { Button } from "../components/ui/button"
@@ -13,7 +13,10 @@ import { Badge } from "../components/ui/badge"
 import { Textarea } from "../components/ui/textarea"
 import { useToast } from "../hooks/use-toast"
 import { QRCodeSVG } from "qrcode.react"
-import { Wifi, Download, Copy, Shield, Eye, EyeOff, Sparkles } from "lucide-react"
+import { Wifi, Download, Copy, Shield, Eye, EyeOff, Sparkles, Palette } from "lucide-react"
+import { QRCTAFrame } from "./qr-cta-frame"
+import { downloadQRCodeWithBranding } from "./qr-download-util"
+import type { Tabs } from "@radix-ui/react-tabs"
 
 type SecurityType = "WPA" | "WEP" | "nopass"
 
@@ -31,7 +34,7 @@ interface WifiQRGeneratorProps {
   setTouched: (touched: boolean) => void
   showPassword: boolean
   setShowPassword: (show: boolean) => void
-  qrRef: React.RefObject<SVGSVGElement>
+  qrRef: React.RefObject<SVGSVGElement | null> 
   onDownload: () => Promise<void>
   onCopy: () => Promise<void>
   onGenerateSample: () => void
@@ -49,6 +52,17 @@ export function WifiQRGenerator({
   onCopy,
   onGenerateSample,
 }: WifiQRGeneratorProps) {
+  const [patternColor, setPatternColor] = useState('#000000')
+  const [backgroundColor, setBackgroundColor] = useState('#ffffff')
+  const [logoUrl, setLogoUrl] = useState<string>('')
+  const [ctaConfig, setCtaConfig] = useState({
+    enabled: false,
+    text: 'Scan for WiFi',
+    frameType: 'top' as const,
+    backgroundColor: '#f5f5f5',
+    textColor: '#000000',
+  })
+
   const isFormValid = useMemo(() => {
     if (!config.ssid.trim()) return false
     if (config.security !== "nopass" && !config.password.trim()) return false
@@ -182,41 +196,146 @@ export function WifiQRGenerator({
           <CardDescription>Scan this code to connect to your Wi-Fi network</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          {wifiString ? (
-            <>
-              <div className="flex justify-center p-6 bg-muted/30 rounded-lg">
-                <QRCodeSVG
-                  ref={qrRef}
-                  value={wifiString}
-                  size={200}
-                  level="M"
-                  includeMargin
-                  className="border rounded"
-                />
-              </div>
+        {wifiString ? (
+                      <>
+                        <div className="flex justify-center p-6 bg-muted/30 rounded-lg relative">
+                          <div style={{ backgroundColor }}>
+                            <QRCodeSVG
+                              ref={qrRef}
+                              value={wifiString}
+                              size={200}
+                              level="M"
+                              includeMargin
+                              fgColor={patternColor}
+                              bgColor={backgroundColor}
+                              className="border rounded"
+                            />
+                          </div>
+                          {logoUrl && (
+                            <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-20 h-20 bg-white rounded-lg p-1 flex items-center justify-center shadow-lg">
+                              <img src={logoUrl || "/placeholder.svg"} alt="Logo" className="w-full h-full object-contain" />
+                            </div>
+                          )}
+                        </div>
 
-              <div className="flex gap-2">
-                <Button onClick={onDownload} className="flex-1">
-                  <Download className="h-4 w-4 mr-2" />
-                  Download PNG
-                </Button>
-                <Button onClick={onCopy} variant="outline" className="flex-1 bg-transparent">
-                  <Copy className="h-4 w-4 mr-2" />
-                  Copy Code
-                </Button>
-              </div>
+                        <div className="flex gap-2">
+                          <Button onClick={async () => {
+                            try {
+                              const wifiString = `WIFI:T:${config.security};S:${config.ssid.replace(/[\\";,]/g, '\\$&')};${config.security !== 'nopass' ? `P:${config.password.replace(/[\\";,]/g, '\\$&')};` : ''}H:${config.hidden};;`
+                              await downloadQRCodeWithBranding({
+                                value: wifiString,
+                                filename: `wifi-${config.ssid || 'qr'}`,
+                                patternColor,
+                                backgroundColor,
+                                logoUrl,
+                                ctaConfig,
+                              })
+                            } catch (error) {
+                              console.error('[v0] Download error:', error)
+                            }
+                          }} className="flex-1">
+                            <Download className="h-4 w-4 mr-2" />
+                            Download PNG
+                          </Button>
+                          <Button onClick={onCopy} variant="outline" className="flex-1 bg-transparent">
+                            <Copy className="h-4 w-4 mr-2" />
+                            Copy Code
+                          </Button>
+                        </div>
 
               <div className="space-y-2">
                 <Label htmlFor="wifi-payload">Wi-Fi Configuration String</Label>
                 <Textarea id="wifi-payload" value={wifiString} readOnly className="font-mono text-sm" rows={3} />
               </div>
 
-              <div className="flex flex-wrap gap-2">
-                <Badge variant="secondary">
-                  Security: {config.security === "nopass" ? "Open" : config.security}
-                </Badge>
-                {config.hidden && <Badge variant="outline">Hidden Network</Badge>}
-              </div>
+                        {/* Branding Section */}
+                        <div className="space-y-4 pt-4 border-t">
+                          <div className="flex items-center gap-2">
+                            <Palette className="h-4 w-4" />
+                            <h3 className="font-semibold">Brand Customization</h3>
+                          </div>
+
+                          <div className="grid gap-4 md:grid-cols-2">
+                            <div className="space-y-2">
+                              <Label htmlFor="wifi-pattern-color">QR Pattern Color</Label>
+                              <div className="flex gap-2 items-center">
+                                <input
+                                  id="wifi-pattern-color"
+                                  type="color"
+                                  value={patternColor}
+                                  onChange={(e) => setPatternColor(e.target.value)}
+                                  className="h-10 w-14 rounded cursor-pointer"
+                                />
+                                <span className="text-sm text-muted-foreground">{patternColor}</span>
+                              </div>
+                            </div>
+
+                            <div className="space-y-2">
+                              <Label htmlFor="wifi-bg-color">Background Color</Label>
+                              <div className="flex gap-2 items-center">
+                                <input
+                                  id="wifi-bg-color"
+                                  type="color"
+                                  value={backgroundColor}
+                                  onChange={(e) => setBackgroundColor(e.target.value)}
+                                  className="h-10 w-14 rounded cursor-pointer"
+                                />
+                                <span className="text-sm text-muted-foreground">{backgroundColor}</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="space-y-2">
+                            <Label htmlFor="wifi-logo">Brand Logo (Optional)</Label>
+                            <div className="flex gap-2">
+                              <Button
+                                variant="outline"
+                                className="bg-transparent"
+                                onClick={() => {
+                                  const input = document.createElement('input')
+                                  input.type = 'file'
+                                  input.accept = 'image/*'
+                                  input.onchange = (e) => {
+                                    const file = (e.target as HTMLInputElement).files?.[0]
+                                    if (file) {
+                                      const reader = new FileReader()
+                                      reader.onload = (event) => {
+                                        setLogoUrl(event.target?.result as string)
+                                      }
+                                      reader.readAsDataURL(file)
+                                    }
+                                  }
+                                  input.click()
+                                }}
+                              >
+                                Upload Logo
+                              </Button>
+                              {logoUrl && (
+                                <Button
+                                  variant="outline"
+                                  className="bg-transparent"
+                                  onClick={() => setLogoUrl('')}
+                                >
+                                  Remove Logo
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* CTA Frame */}
+                        <div className="pt-4 border-t">
+                          <QRCTAFrame config={ctaConfig} onChange={()=>setCtaConfig} />
+                        </div>
+
+                        <div className="flex flex-wrap gap-2">
+                          <Badge variant="secondary">
+                            Security: {config.security === "nopass" ? "Open" : config.security}
+                          </Badge>
+                          {config.hidden && <Badge variant="outline">Hidden Network</Badge>}
+                          {logoUrl && <Badge variant="secondary">Branded Logo</Badge>}
+                          {ctaConfig.enabled && <Badge variant="secondary">CTA Frame</Badge>}
+                        </div>
             </>
           ) : (
             <div className="flex flex-col items-center justify-center py-12 text-center">
