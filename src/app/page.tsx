@@ -12,9 +12,10 @@ import { WifiQRGenerator } from "../components/wifi-qr-generator"
 import { ProductQRGenerator } from "../components/product-qr-generator"
 import { ActionQRGenerator } from "../components/action-qr-generator"
 import { MenuQRGenerator } from "../components/menu-qr-generator"
-import { Zap, UtensilsCrossed } from "lucide-react"
+import { NuDavaoQRGenerator } from "../components/nu-davao-qr-generator"
+import { Zap, UtensilsCrossed, GraduationCap } from "lucide-react"
 
-type TabType = "wifi" | "product" | "action" | "menu"
+type TabType = "wifi" | "product" | "action" | "menu" | "nu"
 
 interface WifiConfig {
   ssid: string
@@ -212,7 +213,7 @@ export default function QRGenerator() {
             </div>
 
             {/* Tab Navigation */}
-            <div className="flex gap-2 mb-8 border-b">
+            <div className="flex flex-wrap gap-2 mb-8 border-b">
               <button
                 onClick={() => setActiveTab("wifi")}
                 className={`px-4 py-2 font-medium border-b-2 transition-colors ${
@@ -265,6 +266,19 @@ export default function QRGenerator() {
                   Menu QR
                 </div>
               </button>
+              <button
+                onClick={() => setActiveTab("nu")}
+                className={`px-4 py-2 font-medium border-b-2 transition-colors ${
+                  activeTab === "nu"
+                    ? "border-primary text-primary"
+                    : "border-transparent text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <GraduationCap className="h-4 w-4" />
+                  NU Davao
+                </div>
+              </button>
             </div>
 
             {/* WiFi Tab Content */}
@@ -302,6 +316,9 @@ export default function QRGenerator() {
 
             {/* Menu QR Tab Content */}
             {activeTab === "menu" && <MenuQRGenerator />}
+
+            {/* NU Davao Link QR Tab Content */}
+            {activeTab === "nu" && <NuDavaoQRGenerator />}
 
 
           </div>
